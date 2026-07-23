@@ -36,14 +36,48 @@
   .dv-grain {
     pointer-events: none; position: absolute; inset: 0;
     background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
-    opacity: 0.05;
+    opacity: 0.09;
     animation: dv-grain-shift 0.6s steps(3) infinite;
+  }
+  .dv-vignette, .dv-tracking, .dv-chroma {
+    pointer-events: none; position: absolute; inset: 0;
+  }
+  .dv-vignette {
+    background: radial-gradient(ellipse at center, transparent 38%, rgba(0,0,0,0.16) 73%, rgba(0,0,0,0.52) 120%);
+    mix-blend-mode: multiply;
+  }
+  .dv-tracking {
+    background: repeating-linear-gradient(
+      to bottom,
+      transparent 0px,
+      transparent 30px,
+      rgba(122,205,255,0.12) 31px,
+      rgba(8,20,34,0.24) 33px,
+      transparent 35px
+    );
+    opacity: 0.42; mix-blend-mode: screen;
+    animation: dv-tracking-roll 7s linear infinite;
+  }
+  .dv-chroma {
+    background: linear-gradient(90deg, rgba(255,47,96,0.07), transparent 12%, transparent 84%, rgba(44,187,255,0.11));
+    opacity: 0.55; mix-blend-mode: screen;
+    animation: dv-chroma-jitter 3.8s steps(2) infinite;
   }
   @keyframes dv-grain-shift {
     0% { transform: translate(0, 0); }
     33% { transform: translate(-6px, 4px); }
     66% { transform: translate(5px, -5px); }
     100% { transform: translate(0, 0); }
+  }
+  @keyframes dv-tracking-roll {
+    0%, 87%, 100% { transform: translateY(0); }
+    89% { transform: translateY(6px); }
+    92% { transform: translateY(-3px); }
+  }
+  @keyframes dv-chroma-jitter {
+    0%, 81%, 100% { transform: translateX(0); }
+    83% { transform: translateX(-2px); }
+    86% { transform: translateX(1px); }
   }
 
   .brand {
@@ -64,17 +98,33 @@
 
   .filters {
     position: absolute; right: 16px; top: 50%; transform: translateY(-50%);
-    display: flex; flex-direction: column; gap: 12px;
+    display: flex; flex-direction: column; gap: 6px; min-width: 126px; padding: 9px;
+    border: 1px solid rgba(152,204,235,0.28); border-radius: 5px;
+    background: linear-gradient(145deg, rgba(37,48,61,0.84), rgba(7,12,19,0.78));
+    box-shadow: 0 5px 16px rgba(0,0,0,0.35), inset 0 1px rgba(255,255,255,0.14), inset 0 -1px rgba(0,0,0,0.8);
+    backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px);
   }
+  .filters::before { content: 'CAM FILTER'; font-size: 7px; letter-spacing: 0.19em; color: rgba(193,228,247,0.46); padding: 0 2px 2px; }
   .filters button {
-    background: none; border: none; cursor: pointer; font: inherit;
-    text-align: right; font-size: 10px; letter-spacing: 0.25em;
-    color: rgba(224,242,254,0.35); transition: color 0.15s;
+    display: flex; align-items: center; gap: 7px; width: 100%; padding: 7px 8px;
+    border: 1px solid rgba(4,10,15,0.92); border-radius: 3px; cursor: pointer; font: inherit;
+    text-align: left; font-size: 9px; letter-spacing: 0.12em; color: rgba(206,226,238,0.52);
+    background: linear-gradient(180deg, rgba(79,96,112,0.72), rgba(23,31,40,0.9));
+    box-shadow: 0 2px 0 rgba(0,0,0,0.8), inset 0 1px rgba(255,255,255,0.18), inset 0 -2px rgba(0,0,0,0.3);
+    transition: transform 0.12s, color 0.12s, background 0.12s, box-shadow 0.12s;
   }
-  .filters button:hover { color: rgba(224,242,254,0.7); }
-  .filters button.active { color: #e0f2fe; }
-  .filters button .dash { margin-left: 6px; color: #7dd3fc; visibility: hidden; }
-  .filters button.active .dash { visibility: visible; }
+  .filters button:hover { color: rgba(232,247,255,0.88); }
+  .filters button:active, .filters button.active { transform: translateY(2px); }
+  .filters button.active {
+    color: #e5f7ff; border-color: rgba(91,202,255,0.82);
+    background: linear-gradient(180deg, rgba(47,134,177,0.95), rgba(16,61,90,0.96));
+    box-shadow: 0 0 10px rgba(80,203,255,0.32), inset 0 2px 5px rgba(0,18,33,0.72);
+  }
+  .filters button .filter-led { width: 6px; height: 6px; flex: 0 0 6px; border-radius: 50%; background: #243746; box-shadow: inset 0 1px 1px rgba(0,0,0,0.8); }
+  .filters button.active .filter-led { background: #74deff; box-shadow: 0 0 7px #5bd5ff, inset 0 1px rgba(255,255,255,0.85); }
+  .filters button .filter-name { flex: 1; }
+  .filters button .dash { font-size: 7px; letter-spacing: 0.08em; color: #9deaff; opacity: 0; }
+  .filters button.active .dash { opacity: 1; }
 
   .album-teaser {
     position: absolute; bottom: 16px; left: 16px; width: 208px;
@@ -114,8 +164,8 @@
   @media (max-width: 600px) {
     .brand { font-size: 10px; letter-spacing: 0.35em; }
     .album-teaser { width: 176px; }
-    .filters { right: 10px; }
-    .filters button { font-size: 9px; letter-spacing: 0.15em; }
+    .filters { right: 10px; min-width: 118px; padding: 7px; }
+    .filters button { font-size: 8px; letter-spacing: 0.1em; padding: 7px; }
   }
   /* iOS Safari zooms the page when a focused input is smaller than 16px. */
   @media (hover: none) and (pointer: coarse) {
@@ -131,6 +181,9 @@
 
   <div class="dv-scanlines"></div>
   <div class="dv-grain"></div>
+  <div class="dv-vignette"></div>
+  <div class="dv-tracking"></div>
+  <div class="dv-chroma"></div>
 
   <div class="brand">FALLING NANA</div>
 
@@ -255,16 +308,26 @@ video.style.filter = FILTERS[currentFilter];
 const filtersEl = document.getElementById('filters');
 FILTER_NAMES.forEach((name) => {
   const b = document.createElement('button');
-  b.textContent = name;
+  b.type = 'button';
+  b.setAttribute('aria-pressed', String(name === currentFilter));
+  const led = document.createElement('span');
+  led.className = 'filter-led';
+  const label = document.createElement('span');
+  label.className = 'filter-name';
+  label.textContent = name;
   const dash = document.createElement('span');
   dash.className = 'dash';
-  dash.textContent = '—';
-  b.appendChild(dash);
+  dash.textContent = 'ON';
+  b.append(led, label, dash);
   if (name === currentFilter) b.classList.add('active');
   b.addEventListener('click', () => {
     currentFilter = name;
     video.style.filter = FILTERS[name];
-    filtersEl.querySelectorAll('button').forEach((x) => x.classList.toggle('active', x === b));
+    filtersEl.querySelectorAll('button').forEach((x) => {
+      const active = x === b;
+      x.classList.toggle('active', active);
+      x.setAttribute('aria-pressed', String(active));
+    });
   });
   filtersEl.appendChild(b);
 });
