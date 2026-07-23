@@ -270,10 +270,11 @@ const maskDot = document.getElementById('maskDot');
 const maskLabel = document.getElementById('maskLabel');
 function renderStatus() {
   let label;
-  if (camStatus === 'denied') label = 'CAMERA / DENIED';
+  if (camStatus === 'denied') label = 'CAMERA / DENIED — RAIN ONLY';
+  else if (camStatus === 'unavailable') label = 'CAMERA / UNAVAILABLE — RAIN ONLY';
   else if (camStatus !== 'active') label = 'CAMERA / REQUESTING';
   else if (maskStatus === 'active') label = 'BODY MASK / ACTIVE';
-  else if (maskStatus === 'failed') label = 'BODY MASK / FAILED — RAIN PAUSED';
+  else if (maskStatus === 'failed') label = 'BODY MASK / UNAVAILABLE — RAIN ONLY';
   else label = 'BODY MASK / LOADING';
   maskLabel.textContent = label;
   maskDot.classList.toggle('ok', camStatus === 'active' && maskStatus === 'active');
@@ -334,7 +335,7 @@ function resize() {
   syncMap();
 }
 window.addEventListener('resize', resize);
-window.visualViewport?.addEventListener('resize', resize);
+if (window.visualViewport) window.visualViewport.addEventListener('resize', resize);
 resize();
 
 // segmentation mask (downscaled Uint8 bitmap)
@@ -370,6 +371,7 @@ function onSegResults(results) {
   if (!maskActive) {
     maskActive = true;
     maskStatus = 'active';
+    clearTimeout(rainFallbackTimer);
     renderStatus();
     startRain();
   }
@@ -648,8 +650,23 @@ camStatus = 'requesting';
 maskStatus = 'loading';
 renderStatus();
 
-navigator.mediaDevices
-  .getUserMedia({
+let rainFallbackTimer = null;
+function startRainFallback() {
+  if (maskActive) return;
+  maskStatus = 'failed';
+  renderStatus();
+  startRain();
+}
+
+const mediaDevices = navigator.mediaDevices;
+if (!mediaDevices || typeof mediaDevices.getUserMedia !== 'function') {
+  camStatus = 'unavailable';
+  startRainFallback();
+} else {
+  // Some in-app browsers expose the API but never resolve the permission prompt.
+  // After a short grace period, preserve the visual experience as ordinary rain.
+  rainFallbackTimer = setTimeout(startRainFallback, 8000);
+  mediaDevices.getUserMedia({
     video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
     audio: false,
   })
@@ -663,7 +680,7 @@ navigator.mediaDevices
 
     createSelfieSegmentation(onSegResults)
       .then((instance) => { seg = instance; startSeg(); })
-      .catch(() => { maskStatus = 'failed'; renderStatus(); });
+      .catch(startRainFallback);
 
     handStatus = 'loading';
     createHands(onHandResults)
@@ -671,10 +688,11 @@ navigator.mediaDevices
       .catch(() => { handStatus = 'failed'; });
   })
   .catch(() => {
+    clearTimeout(rainFallbackTimer);
     camStatus = 'denied';
-    maskStatus = 'failed';
-    renderStatus();
+    startRainFallback();
   });
+}
 </script>
 </body>
 </html>
