@@ -209,7 +209,9 @@ async function createHands(onResults) {
   return hands;
 }
 
-/* Cover-crop + mirror mapping between video pixel space and screen (CSS px).
+/* Cover-crop + mirror mapping between video pixel space and the rain canvas.
+   The canvas' measured CSS bounds are used because mobile browser toolbars can
+   change the visible viewport without updating window.innerHeight in time.
    Video is object-fit: cover + scaleX(-1): screenX = W - (offsetX + videoX*scale). */
 function makeCoverMap(screenW, screenH, videoW, videoH) {
   const scale = Math.max(screenW / videoW, screenH / videoH);
@@ -313,18 +315,26 @@ const fontFor = (size) => FONTS[Math.max(0, Math.min(10, ((size - 12) / 2) | 0))
 
 // layout / mapping
 let W = 0, H = 0, map = null;
+function syncMap() {
+  if (!video.videoWidth || !video.videoHeight) return;
+  const bounds = canvas.getBoundingClientRect();
+  const width = bounds.width || W;
+  const height = bounds.height || H;
+  if (width && height) map = makeCoverMap(width, height, video.videoWidth, video.videoHeight);
+}
+
 function resize() {
+  const bounds = canvas.getBoundingClientRect();
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  W = window.innerWidth;
-  H = window.innerHeight;
+  W = Math.max(1, Math.round(bounds.width || window.innerWidth));
+  H = Math.max(1, Math.round(bounds.height || window.innerHeight));
   canvas.width = Math.round(W * dpr);
   canvas.height = Math.round(H * dpr);
-  canvas.style.width = W + 'px';
-  canvas.style.height = H + 'px';
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  if (video.videoWidth) map = makeCoverMap(W, H, video.videoWidth, video.videoHeight);
+  syncMap();
 }
 window.addEventListener('resize', resize);
+window.visualViewport?.addEventListener('resize', resize);
 resize();
 
 // segmentation mask (downscaled Uint8 bitmap)
@@ -339,6 +349,9 @@ function onSegResults(results) {
   segBusy = false;
   const vw = video.videoWidth, vh = video.videoHeight;
   if (!vw || !vh) return;
+  // iOS can settle on a new viewport or camera frame after loadedmetadata.
+  // Rebuild the cover map for every mask so collision checks stay aligned.
+  syncMap();
   const mw = Math.max(1, Math.round(vw / MASK_DIV));
   const mh = Math.max(1, Math.round(vh / MASK_DIV));
   if (mw !== maskW || mh !== maskH) {
@@ -646,6 +659,7 @@ navigator.mediaDevices
     camStatus = 'active';
     renderStatus();
     video.addEventListener('loadedmetadata', resize);
+    video.addEventListener('resize', resize);
 
     createSelfieSegmentation(onSegResults)
       .then((instance) => { seg = instance; startSeg(); })
