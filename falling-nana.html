@@ -271,7 +271,7 @@ function renderStatus() {
   if (camStatus === 'denied') label = 'CAMERA / DENIED';
   else if (camStatus !== 'active') label = 'CAMERA / REQUESTING';
   else if (maskStatus === 'active') label = 'BODY MASK / ACTIVE';
-  else if (maskStatus === 'failed') label = 'BODY MASK / FAILED — RAIN ONLY';
+  else if (maskStatus === 'failed') label = 'BODY MASK / FAILED — RAIN PAUSED';
   else label = 'BODY MASK / LOADING';
   maskLabel.textContent = label;
   maskDot.classList.toggle('ok', camStatus === 'active' && maskStatus === 'active');
@@ -358,6 +358,7 @@ function onSegResults(results) {
     maskActive = true;
     maskStatus = 'active';
     renderStatus();
+    startRain();
   }
 }
 
@@ -415,6 +416,7 @@ const dmass = new Uint8Array(MAX_DROPS);
 const dchar = new Uint8Array(MAX_DROPS);
 const dsize = new Float32Array(MAX_DROPS);
 let dropCount = 0;
+let rainActive = false;
 
 function spawn(i, anywhere) {
   dx[i] = Math.random() * W;
@@ -431,9 +433,22 @@ function spawn(i, anywhere) {
 }
 
 function setDropCount() {
+  // Keep the canvas dry until the first usable body mask arrives. Starting with
+  // zero drops avoids the brief "rain misses the person" phase at launch.
+  if (!rainActive) {
+    dropCount = 0;
+    return;
+  }
   const n = Math.max(180, Math.min(MAX_DROPS, Math.round((W * H) / 4800)));
-  if (n > dropCount) for (let i = dropCount; i < n; i++) spawn(i, true);
+  if (n > dropCount) for (let i = dropCount; i < n; i++) spawn(i, false);
   dropCount = n;
+}
+
+function startRain() {
+  if (rainActive) return;
+  rainActive = true;
+  last = performance.now();
+  setDropCount();
 }
 setDropCount();
 window.addEventListener('resize', setDropCount);
