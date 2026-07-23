@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>FALLING NANA</title>
+<style>
+  /* FALLING NANA — single-file port (hand-written CSS, no Tailwind) */
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    position: fixed; inset: 0; overflow: hidden; background: #000;
+    font-family: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, "Courier New", monospace;
+    -webkit-user-select: none; user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #stage { position: absolute; inset: 0; }
+  #cam {
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    object-fit: cover; transform: scaleX(-1);
+    /* filter is set by JS — applied ONLY to the video, never rain/UI */
+  }
+  #rain { position: absolute; inset: 0; }
+
+  /* DV texture overlays */
+  .dv-scanlines {
+    pointer-events: none; position: absolute; inset: 0;
+    background: repeating-linear-gradient(
+      to bottom,
+      rgba(0, 0, 0, 0.14) 0px,
+      rgba(0, 0, 0, 0.14) 1px,
+      transparent 1px,
+      transparent 3px
+    );
+    opacity: 0.5; mix-blend-mode: multiply;
+  }
+  .dv-grain {
+    pointer-events: none; position: absolute; inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
+    opacity: 0.05;
+    animation: dv-grain-shift 0.6s steps(3) infinite;
+  }
+  @keyframes dv-grain-shift {
+    0% { transform: translate(0, 0); }
+    33% { transform: translate(-6px, 4px); }
+    66% { transform: translate(5px, -5px); }
+    100% { transform: translate(0, 0); }
+  }
+
+  .brand {
+    position: absolute; top: 16px; left: 16px;
+    font-size: 11px; letter-spacing: 0.5em; color: rgba(224,242,254,0.85);
+  }
+  .status {
+    position: absolute; top: 16px; right: 16px;
+    display: flex; flex-direction: column; align-items: flex-end; gap: 6px;
+  }
+  .status-row { display: flex; align-items: center; gap: 6px; font-size: 10px; letter-spacing: 0.2em; }
+  .dot { display: inline-block; width: 6px; height: 6px; border-radius: 9999px; background: rgba(125,211,252,0.4); animation: pulse 2s infinite; }
+  .dot.ok { background: #7dd3fc; animation: none; }
+  .dot.rec { background: rgba(248,113,113,0.9); animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.35; } }
+  .status-label { color: rgba(224,242,254,0.75); }
+  .rec-line { display: flex; align-items: center; gap: 6px; font-size: 10px; letter-spacing: 0.18em; color: rgba(186,230,253,0.7); }
+
+  .filters {
+    position: absolute; right: 16px; top: 50%; transform: translateY(-50%);
+    display: flex; flex-direction: column; gap: 12px;
+  }
+  .filters button {
+    background: none; border: none; cursor: pointer; font: inherit;
+    text-align: right; font-size: 10px; letter-spacing: 0.25em;
+    color: rgba(224,242,254,0.35); transition: color 0.15s;
+  }
+  .filters button:hover { color: rgba(224,242,254,0.7); }
+  .filters button.active { color: #e0f2fe; }
+  .filters button .dash { margin-left: 6px; color: #7dd3fc; visibility: hidden; }
+  .filters button.active .dash { visibility: visible; }
+
+  .album-teaser {
+    position: absolute; bottom: 16px; left: 16px; width: 208px;
+    border: 1px solid rgba(224,242,254,0.1); border-radius: 2px;
+    background: rgba(0,0,0,0.35); padding: 10px;
+    backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+  }
+  .album-teaser-top { display: flex; align-items: center; gap: 10px; }
+  .album-cover {
+    flex-shrink: 0; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center;
+    border-radius: 2px; background: linear-gradient(to bottom right, rgba(56,189,248,0.5), rgba(99,102,241,0.4));
+    font-size: 9px; letter-spacing: 0.15em; color: rgba(240,249,255,0.9);
+  }
+  .album-copy { min-width: 0; flex: 1; }
+  .album-artist { font-size: 8px; letter-spacing: 0.22em; color: rgba(224,242,254,0.5); }
+  .album-title { margin-top: 2px; font-size: 10px; letter-spacing: 0.08em; color: rgba(240,249,255,0.92); }
+  .album-status {
+    margin-top: 9px; padding-top: 7px; border-top: 1px solid rgba(224,242,254,0.12);
+    font-size: 8px; letter-spacing: 0.24em; color: #7dd3fc;
+  }
+
+  .redeem {
+    position: absolute; right: 16px; bottom: 16px;
+    display: flex; flex-direction: column; align-items: flex-end; gap: 6px;
+  }
+  .redeem input {
+    width: 144px; border-radius: 2px; border: 1px solid rgba(224,242,254,0.15);
+    background: rgba(0,0,0,0.35); padding: 6px 8px;
+    font: inherit; font-size: 10px; letter-spacing: 0.2em; color: #e0f2fe; outline: none;
+    -webkit-user-select: text; user-select: text;
+  }
+  .redeem input::placeholder { color: rgba(224,242,254,0.3); }
+  .redeem input:focus { border-color: rgba(125,211,252,0.5); }
+  .unlocked-label { font-size: 10px; letter-spacing: 0.25em; color: rgba(125,211,252,0.9); }
+  .fineprint { font-size: 8px; letter-spacing: 0.2em; color: rgba(224,242,254,0.3); }
+
+  @media (max-width: 600px) {
+    .brand { font-size: 10px; letter-spacing: 0.35em; }
+    .album-teaser { width: 176px; }
+    .filters { right: 10px; }
+    .filters button { font-size: 9px; letter-spacing: 0.15em; }
+  }
+</style>
+</head>
+<body>
+  <div id="stage">
+    <video id="cam" autoplay playsinline muted></video>
+    <canvas id="rain"></canvas>
+  </div>
+
+  <div class="dv-scanlines"></div>
+  <div class="dv-grain"></div>
+
+  <div class="brand">FALLING NANA</div>
+
+  <div class="status">
+    <div class="status-row">
+      <span id="maskDot" class="dot"></span>
+      <span id="maskLabel" class="status-label">CAMERA / REQUESTING</span>
+    </div>
+    <div class="rec-line">
+      <span class="dot rec"></span>
+      <span id="recTs">REC</span>
+    </div>
+  </div>
+
+  <div class="filters" id="filters"></div>
+
+  <div class="album-teaser" aria-label="Falling Nana first album coming soon">
+    <div class="album-teaser-top">
+      <div class="album-cover">FN</div>
+      <div class="album-copy">
+        <div class="album-artist">FALLING NANA</div>
+        <div class="album-title">1ST ALBUM</div>
+      </div>
+    </div>
+    <div class="album-status">COMING SOON</div>
+  </div>
+
+  <div class="redeem">
+    <input id="codeInput" placeholder="REDEEM CODE" autocomplete="off">
+    <div class="unlocked-label" id="unlockedLabel" style="display:none">UMBRELLA / UNLOCKED</div>
+    <div class="fineprint">ALL VIDEO PROCESSED ON-DEVICE</div>
+  </div>
+
+<script>
+'use strict';
+/* ============================================================
+   FALLING NANA — single-file vanilla port of the React app.
+   All camera/mask processing is local; frames never leave device.
+   ============================================================ */
+
+// ---------- vision.ts equivalents ----------
+const SEG_BASE = 'https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation';
+const HANDS_BASE = 'https://cdn.jsdelivr.net/npm/@mediapipe/hands';
+
+const scriptCache = new Map();
+function loadScript(src) {
+  const hit = scriptCache.get(src);
+  if (hit) return hit;
+  const p = new Promise((resolve, reject) => {
+    const el = document.createElement('script');
+    el.src = src;
+    el.crossOrigin = 'anonymous';
+    el.onload = () => resolve();
+    el.onerror = () => reject(new Error('failed to load ' + src));
+    document.head.appendChild(el);
+  });
+  scriptCache.set(src, p);
+  return p;
+}
+
+async function createSelfieSegmentation(onResults) {
+  await loadScript(SEG_BASE + '/selfie_segmentation.js');
+  if (!window.SelfieSegmentation) throw new Error('SelfieSegmentation unavailable');
+  const seg = new window.SelfieSegmentation({ locateFile: (f) => SEG_BASE + '/' + f });
+  // selfieMode: false — we feed the RAW (unmirrored) video and mirror via mapping.
+  seg.setOptions({ modelSelection: 1, selfieMode: false });
+  seg.onResults(onResults);
+  return seg;
+}
+
+async function createHands(onResults) {
+  await loadScript(HANDS_BASE + '/hands.js');
+  if (!window.Hands) throw new Error('Hands unavailable');
+  const hands = new window.Hands({ locateFile: (f) => HANDS_BASE + '/' + f });
+  hands.setOptions({
+    maxNumHands: 1, modelComplexity: 0,
+    minDetectionConfidence: 0.5, minTrackingConfidence: 0.5, selfieMode: false,
+  });
+  hands.onResults(onResults);
+  return hands;
+}
+
+/* Cover-crop + mirror mapping between video pixel space and screen (CSS px).
+   Video is object-fit: cover + scaleX(-1): screenX = W - (offsetX + videoX*scale). */
+function makeCoverMap(screenW, screenH, videoW, videoH) {
+  const scale = Math.max(screenW / videoW, screenH / videoH);
+  return {
+    scale,
+    offsetX: (screenW - videoW * scale) / 2,
+    offsetY: (screenH - videoH * scale) / 2,
+    screenW, screenH, videoW, videoH,
+  };
+}
+function screenToVideo(m, sx, sy) {
+  return { x: (m.screenW - sx - m.offsetX) / m.scale, y: (sy - m.offsetY) / m.scale };
+}
+function videoToScreen(m, vx, vy) {
+  return { x: m.screenW - (m.offsetX + vx * m.scale), y: m.offsetY + vy * m.scale };
+}
+
+// ---------- App state / UI ----------
+const FILTERS = {
+  'NANA BLUE': 'saturate(0.85) hue-rotate(-16deg) contrast(1.1) brightness(0.62)',
+  'DV 2001': 'contrast(1.18) saturate(1.2) sepia(0.22) brightness(0.58)',
+  'MONO RAIN': 'grayscale(1) contrast(1.22) brightness(0.6) sepia(0.5) hue-rotate(190deg) saturate(2.2)',
+};
+const FILTER_NAMES = Object.keys(FILTERS);
+
+let currentFilter = 'NANA BLUE';
+let camStatus = 'idle';   // idle | requesting | active | denied
+let maskStatus = 'off';   // off | loading | active | failed
+let handStatus = 'off';   // off | loading | active | failed
+let umbrellaOn = false;
+
+const video = document.getElementById('cam');
+const canvas = document.getElementById('rain');
+video.style.filter = FILTERS[currentFilter];
+
+// Filter switcher
+const filtersEl = document.getElementById('filters');
+FILTER_NAMES.forEach((name) => {
+  const b = document.createElement('button');
+  b.textContent = name;
+  const dash = document.createElement('span');
+  dash.className = 'dash';
+  dash.textContent = '—';
+  b.appendChild(dash);
+  if (name === currentFilter) b.classList.add('active');
+  b.addEventListener('click', () => {
+    currentFilter = name;
+    video.style.filter = FILTERS[name];
+    filtersEl.querySelectorAll('button').forEach((x) => x.classList.toggle('active', x === b));
+  });
+  filtersEl.appendChild(b);
+});
+
+// Status label
+const maskDot = document.getElementById('maskDot');
+const maskLabel = document.getElementById('maskLabel');
+function renderStatus() {
+  let label;
+  if (camStatus === 'denied') label = 'CAMERA / DENIED';
+  else if (camStatus !== 'active') label = 'CAMERA / REQUESTING';
+  else if (maskStatus === 'active') label = 'BODY MASK / ACTIVE';
+  else if (maskStatus === 'failed') label = 'BODY MASK / FAILED — RAIN ONLY';
+  else label = 'BODY MASK / LOADING';
+  maskLabel.textContent = label;
+  maskDot.classList.toggle('ok', camStatus === 'active' && maskStatus === 'active');
+}
+
+// REC timestamp
+const recTs = document.getElementById('recTs');
+const pad2 = (n) => String(n).padStart(2, '0');
+function renderRec() {
+  const d = new Date();
+  recTs.textContent = 'REC ' + d.getFullYear() + '.' + pad2(d.getMonth() + 1) + '.' + pad2(d.getDate()) +
+    ' ' + pad2(d.getHours()) + ':' + pad2(d.getMinutes()) + ':' + pad2(d.getSeconds());
+}
+renderRec();
+setInterval(renderRec, 1000);
+
+// ---------- Redeem ----------
+const codeInput = document.getElementById('codeInput');
+const unlockedLabel = document.getElementById('unlockedLabel');
+codeInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && codeInput.value.trim().length >= 4 && !umbrellaOn) {
+    umbrellaOn = true;
+    codeInput.style.display = 'none';
+    unlockedLabel.style.display = '';
+    codeInput.blur();
+  }
+});
+
+// ---------- RainStage equivalent ----------
+const ctx = canvas.getContext('2d');
+const MASK_DIV = 4;
+const GRAVITY = 1500;
+const MAX_EDGE_SCAN = 220;
+const DROP_COLORS = Array.from({ length: 8 }, (_, i) =>
+  'rgba(140,195,255,' + (0.55 + (i / 7) * 0.45).toFixed(2) + ')');
+const LETTERS = 'fallingnana';
+const FONTS = Array.from({ length: 11 }, (_, i) => (12 + i * 2) + 'px "Courier New", monospace');
+const fontFor = (size) => FONTS[Math.max(0, Math.min(10, ((size - 12) / 2) | 0))];
+
+// layout / mapping
+let W = 0, H = 0, map = null;
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  W = window.innerWidth;
+  H = window.innerHeight;
+  canvas.width = Math.round(W * dpr);
+  canvas.height = Math.round(H * dpr);
+  canvas.style.width = W + 'px';
+  canvas.style.height = H + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  if (video.videoWidth) map = makeCoverMap(W, H, video.videoWidth, video.videoHeight);
+}
+window.addEventListener('resize', resize);
+resize();
+
+// segmentation mask (downscaled Uint8 bitmap)
+let maskW = 0, maskH = 0, maskData = null, maskActive = false;
+const maskCanvas = document.createElement('canvas');
+const maskCtx = maskCanvas.getContext('2d', { willReadFrequently: true });
+
+let segBusy = false;
+let handBusy = false;
+
+function onSegResults(results) {
+  segBusy = false;
+  const vw = video.videoWidth, vh = video.videoHeight;
+  if (!vw || !vh) return;
+  const mw = Math.max(1, Math.round(vw / MASK_DIV));
+  const mh = Math.max(1, Math.round(vh / MASK_DIV));
+  if (mw !== maskW || mh !== maskH) {
+    maskW = mw; maskH = mh;
+    maskCanvas.width = mw; maskCanvas.height = mh;
+    maskData = new Uint8Array(mw * mh);
+  }
+  // 'copy' replaces every pixel: the segmentation mask has TRANSPARENT background,
+  // and plain drawImage would leave stale person pixels behind (ghost mask).
+  maskCtx.globalCompositeOperation = 'copy';
+  maskCtx.drawImage(results.segmentationMask, 0, 0, mw, mh);
+  maskCtx.globalCompositeOperation = 'source-over';
+  const img = maskCtx.getImageData(0, 0, mw, mh).data;
+  const data = maskData;
+  for (let i = 0, j = 0; i < data.length; i++, j += 4) data[i] = img[j];
+  if (!maskActive) {
+    maskActive = true;
+    maskStatus = 'active';
+    renderStatus();
+  }
+}
+
+function personAt(sx, sy) {
+  if (!maskActive || !maskData || !map) return false;
+  const v = screenToVideo(map, sx, sy);
+  if (v.x < 0 || v.y < 0 || v.x >= map.videoW || v.y >= map.videoH) return false;
+  const mx = Math.min(maskW - 1, (v.x / map.videoW) * maskW) | 0;
+  const my = Math.min(maskH - 1, (v.y / map.videoH) * maskH) | 0;
+  return maskData[my * maskW + mx] > 128;
+}
+
+// hands (palm tracking for umbrella)
+const palm = { x: 0, y: 0, t: 0, fromHands: false };
+const pointer = { x: -1, y: -1, t: 0 };
+
+function onHandResults(results) {
+  handBusy = false;
+  if (!map) return;
+  const lms = results.multiHandLandmarks;
+  if (lms && lms.length > 0) {
+    const lm = lms[0];
+    const px = ((lm[0].x + lm[9].x) / 2) * video.videoWidth;
+    const py = ((lm[0].y + lm[9].y) / 2) * video.videoHeight;
+    const s = videoToScreen(map, px, py);
+    palm.x = s.x; palm.y = s.y; palm.t = performance.now(); palm.fromHands = true;
+  }
+}
+
+function onPointer(e) {
+  pointer.x = e.clientX; pointer.y = e.clientY; pointer.t = performance.now();
+}
+window.addEventListener('pointermove', onPointer, { passive: true });
+window.addEventListener('pointerdown', onPointer, { passive: true });
+
+function umbrellaAnchor(now) {
+  if (palm.fromHands && now - palm.t < 900) return palm;
+  if (pointer.x >= 0 && now - pointer.t < 10000) return pointer;
+  return null;
+}
+
+// rain engine (preallocated typed-array pools)
+// states: 0 = ST_FALL (free fall), 1 = ST_RUN (runner on body contour)
+const MAX_DROPS = 520;
+const ST_FALL = 0, ST_RUN = 1;
+const dx = new Float32Array(MAX_DROPS);
+const dy = new Float32Array(MAX_DROPS);
+const dv = new Float32Array(MAX_DROPS);
+const dlen = new Float32Array(MAX_DROPS);
+const dshade = new Uint8Array(MAX_DROPS);
+const dst = new Uint8Array(MAX_DROPS);
+const dlost = new Uint8Array(MAX_DROPS);
+const dphase = new Float32Array(MAX_DROPS);
+const dmass = new Uint8Array(MAX_DROPS);
+const dchar = new Uint8Array(MAX_DROPS);
+const dsize = new Float32Array(MAX_DROPS);
+let dropCount = 0;
+
+function spawn(i, anywhere) {
+  dx[i] = Math.random() * W;
+  dy[i] = anywhere ? Math.random() * H : -60 - Math.random() * 80;
+  dv[i] = 160 + Math.random() * 220;
+  dlen[i] = 22 + Math.random() * 34;
+  dshade[i] = (Math.random() * 8) | 0;
+  dst[i] = ST_FALL;
+  dlost[i] = 0;
+  dmass[i] = 0;
+  dchar[i] = (Math.random() * LETTERS.length) | 0;
+  dsize[i] = 14 + Math.random() * 14;
+  dphase[i] = Math.random() * Math.PI * 2;
+}
+
+function setDropCount() {
+  const n = Math.max(180, Math.min(MAX_DROPS, Math.round((W * H) / 4800)));
+  if (n > dropCount) for (let i = dropCount; i < n; i++) spawn(i, true);
+  dropCount = n;
+}
+setDropCount();
+window.addEventListener('resize', setDropCount);
+
+function snapToEdge(x, y) {
+  for (let d = 2; d <= MAX_EDGE_SCAN; d += 2) {
+    if (!personAt(x + d, y)) return x + d + 1;
+    if (!personAt(x - d, y)) return x - d - 1;
+  }
+  return null;
+}
+
+let last = performance.now();
+function tick(now) {
+  requestAnimationFrame(tick);
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+  if (!map) resize();
+
+  const anchor = umbrellaOn ? umbrellaAnchor(now) : null;
+  const ur = Math.min(110, Math.max(56, W * 0.09));
+
+  ctx.clearRect(0, 0, W, H);
+  ctx.lineCap = 'round';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  for (let i = 0; i < dropCount; i++) {
+    let x = dx[i];
+    let y = dy[i];
+
+    if (dst[i] === ST_RUN) {
+      // ----- runner: letters tumbling down the silhouette -----
+      dv[i] += (460 - dv[i]) * Math.min(1, dt * 3);
+      y += dv[i] * dt;
+      let onEdge = false;
+      if (maskActive) {
+        if (personAt(x, y)) {
+          const snapped = snapToEdge(x, y);
+          if (snapped !== null) { x = snapped; onEdge = true; }
+        } else {
+          if (personAt(x - 3, y)) { x -= 2; onEdge = true; }
+          else if (personAt(x + 3, y)) { x += 2; onEdge = true; }
+          else if (personAt(x - 6, y)) { x -= 4; onEdge = true; }
+          else if (personAt(x + 6, y)) { x += 4; onEdge = true; }
+        }
+      }
+      if (onEdge) {
+        dlost[i] = 0;
+      } else if (++dlost[i] > 6) {
+        dst[i] = ST_FALL;
+        dv[i] = 260;
+        dmass[i] = 0;
+      }
+      if (y - dlen[i] * 3 > H) { spawn(i, false); continue; }
+      // merge with a nearby runner: absorb it, grow thicker (max cascade 4 letters)
+      if (dmass[i] < 5) {
+        for (let k = 0; k < dropCount; k++) {
+          if (k === i || dst[k] !== ST_RUN) continue;
+          if (Math.abs(dx[k] - x) > 7) continue;
+          if (Math.abs(dy[k] - y) > dlen[i] * 2) continue;
+          dmass[i]++;
+          // absorbed letter doesn't vanish: it keeps falling from here
+          dst[k] = ST_FALL;
+          dv[k] = 240;
+          break;
+        }
+      }
+      dx[i] = x; dy[i] = y;
+      const size = dsize[i];
+      const count = 1 + Math.min(3, dmass[i]);
+      ctx.font = fontFor(size);
+      ctx.fillStyle = DROP_COLORS[dshade[i]];
+      for (let c = 0; c < count; c++) {
+        const ly = y - c * size * 0.9;
+        const wob = Math.sin(dphase[i] + ly * 0.045) * 2.4;
+        const rot = Math.sin(dphase[i] * 1.7 + ly * 0.02) * 0.45;
+        ctx.save();
+        ctx.translate(x + wob, ly);
+        ctx.rotate(rot);
+        ctx.fillText(LETTERS[(dchar[i] + c) % LETTERS.length], 0, 0);
+        ctx.restore();
+      }
+      continue;
+    }
+
+    // ----- falling letter -----
+    dv[i] += GRAVITY * dt;
+    y += dv[i] * dt;
+    if (y - dlen[i] > H) { spawn(i, false); continue; }
+
+    // body collision: become a runner on the contour
+    if (maskActive && personAt(x, y)) {
+      const snapped = snapToEdge(x, y);
+      if (snapped === null) {
+        // deep inside the body: never draw — slip out via mask in coming frames
+        dx[i] = x; dy[i] = y;
+        continue;
+      }
+      x = snapped;
+      dst[i] = ST_RUN;
+      dv[i] = Math.min(dv[i], 700);
+      dlost[i] = 0;
+      dmass[i] = 0;
+    }
+
+    // umbrella deflection: canopy rim as a solid arc
+    if (anchor) {
+      const rx = x - anchor.x;
+      const ry = y - anchor.y;
+      if (ry < 4 && ry > -ur - 6) {
+        const half = Math.sqrt(Math.max(0, (ur + 2) * (ur + 2) - ry * ry));
+        if (Math.abs(rx) < half) {
+          x = anchor.x + (rx >= 0 ? half + 1 : -half - 1);
+        }
+      }
+    }
+
+    dx[i] = x; dy[i] = y;
+    const wob = Math.sin(dphase[i] * 1.3 + y * 0.02) * 1.5;
+    ctx.font = fontFor(dsize[i]);
+    ctx.fillStyle = DROP_COLORS[dshade[i]];
+    ctx.fillText(LETTERS[dchar[i]], x + wob, y);
+  }
+
+  // umbrella line art (minimal blue)
+  if (anchor) {
+    ctx.strokeStyle = 'rgba(126,182,255,0.9)';
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    ctx.arc(anchor.x, anchor.y, ur, Math.PI, 0);
+    ctx.stroke();
+    const scallops = 5;
+    ctx.beginPath();
+    for (let s = 0; s < scallops; s++) {
+      const a0 = Math.PI + (s / scallops) * Math.PI;
+      const a1 = Math.PI + ((s + 1) / scallops) * Math.PI;
+      const x0 = anchor.x + Math.cos(a0) * ur;
+      const x1 = anchor.x + Math.cos(a1) * ur;
+      ctx.moveTo(x0, anchor.y + Math.sin(a0) * ur);
+      ctx.quadraticCurveTo(
+        (x0 + x1) / 2,
+        anchor.y + Math.sin((a0 + a1) / 2) * ur - 6,
+        x1, anchor.y + Math.sin(a1) * ur
+      );
+    }
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(anchor.x, anchor.y);
+    ctx.lineTo(anchor.x, anchor.y + ur * 0.72);
+    ctx.arc(anchor.x - 7, anchor.y + ur * 0.72, 7, 0, Math.PI);
+    ctx.stroke();
+  }
+}
+requestAnimationFrame(tick);
+
+// ---------- camera + models ----------
+let seg = null;
+let hands = null;
+
+function startSeg() {
+  const step = async () => {
+    setTimeout(step, 90); // ~11 FPS
+    if (segBusy || video.readyState < 2 || !seg) return;
+    segBusy = true;
+    try { await seg.send({ image: video }); }
+    catch { segBusy = false; }
+  };
+  void step();
+}
+
+function startHands() {
+  const step = async () => {
+    setTimeout(step, 100); // ~10 FPS
+    if (handBusy || video.readyState < 2 || !umbrellaOn || !hands) return;
+    handBusy = true;
+    try { await hands.send({ image: video }); }
+    catch { handBusy = false; }
+  };
+  void step();
+}
+
+camStatus = 'requesting';
+maskStatus = 'loading';
+renderStatus();
+
+navigator.mediaDevices
+  .getUserMedia({
+    video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
+    audio: false,
+  })
+  .then((stream) => {
+    video.srcObject = stream;
+    video.play().catch(() => {});
+    camStatus = 'active';
+    renderStatus();
+    video.addEventListener('loadedmetadata', resize);
+
+    createSelfieSegmentation(onSegResults)
+      .then((instance) => { seg = instance; startSeg(); })
+      .catch(() => { maskStatus = 'failed'; renderStatus(); });
+
+    handStatus = 'loading';
+    createHands(onHandResults)
+      .then((instance) => { hands = instance; handStatus = 'active'; startHands(); })
+      .catch(() => { handStatus = 'failed'; });
+  })
+  .catch(() => {
+    camStatus = 'denied';
+    maskStatus = 'failed';
+    renderStatus();
+  });
+</script>
+</body>
+</html>
