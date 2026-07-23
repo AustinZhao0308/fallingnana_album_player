@@ -116,7 +116,9 @@
     .album-teaser { width: 176px; }
     .filters { right: 10px; }
     .filters button { font-size: 9px; letter-spacing: 0.15em; }
-    /* iOS Safari zooms the page when a focused input is smaller than 16px. */
+  }
+  /* iOS Safari zooms the page when a focused input is smaller than 16px. */
+  @media (hover: none) and (pointer: coarse) {
     .redeem input { font-size: 16px; letter-spacing: 0.12em; }
   }
 </style>
