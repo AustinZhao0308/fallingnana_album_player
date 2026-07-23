@@ -116,6 +116,8 @@
     .album-teaser { width: 176px; }
     .filters { right: 10px; }
     .filters button { font-size: 9px; letter-spacing: 0.15em; }
+    /* iOS Safari zooms the page when a focused input is smaller than 16px. */
+    .redeem input { font-size: 16px; letter-spacing: 0.12em; }
   }
 </style>
 </head>
@@ -155,7 +157,7 @@
   </div>
 
   <div class="redeem">
-    <input id="codeInput" placeholder="REDEEM CODE" autocomplete="off">
+    <input id="codeInput" placeholder="REDEEM CODE" autocomplete="off" autocapitalize="characters" autocorrect="off" spellcheck="false">
     <div class="unlocked-label" id="unlockedLabel" style="display:none">UMBRELLA / UNLOCKED</div>
     <div class="fineprint">ALL VIDEO PROCESSED ON-DEVICE</div>
   </div>
@@ -294,6 +296,17 @@ setInterval(renderRec, 1000);
 // ---------- Redeem ----------
 const codeInput = document.getElementById('codeInput');
 const unlockedLabel = document.getElementById('unlockedLabel');
+// Safari may restore focus to a form control after a page restore. Keep the
+// initial camera view unfocused so its visual viewport does not jump or zoom.
+window.addEventListener('pageshow', function () {
+  window.setTimeout(function () {
+    if (document.activeElement === codeInput) codeInput.blur();
+  }, 0);
+});
+codeInput.addEventListener('focus', function () {
+  // Re-measure after the iOS keyboard/viewport transition settles.
+  window.setTimeout(resize, 350);
+});
 codeInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && codeInput.value.trim().length >= 4 && !umbrellaOn) {
     umbrellaOn = true;
